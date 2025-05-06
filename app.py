@@ -987,4 +987,4 @@ if __name__ == '__main__':
     # Run Flask dev server (Use Gunicorn in production)
     # port = int(os.environ.get('PORT', 5000)) # Good practice for deployment flexibility
     # app.run(host='0.0.0.0', port=port, debug=False) # Use debug=False for production/scheduler test
-    app.run(host='127.0.0.1', port=5830, debug=True, use_reloader=False) # Development mode
+    app.run(host='127.0.0.1', port=5830, debug=False)
