@@ -32,6 +32,29 @@ FALLBACK_RATES_TO_CNY = {
     # Add others as needed
 }
 
+# --- NEW: Region Code to Country Name Mapping ---
+# (Maintain this mapping alongside map_country_to_code)
+REGION_CODE_TO_NAME = {
+    'US': '美国', 'CA': '加拿大', 'MX': '墨西哥', 'BR': '巴西', 'CL': '智利',
+    'CO': '哥伦比亚', 'PE': '秘鲁', 'SR': '苏里南', 'BB': '巴巴多斯', 'BS': '巴哈马',
+    'AR': '阿根廷', 'GB': '英国', 'DE': '德国', 'FR': '法国', 'IT': '意大利',
+    'ES': '西班牙', 'NL': '荷兰', 'BE': '比利时', 'IE': '爱尔兰', 'AT': '奥地利',
+    'CH': '瑞士', 'SE': '瑞典', 'NO': '挪威', 'DK': '丹麦', 'FI': '芬兰',
+    'PL': '波兰', 'CZ': '捷克', 'HU': '匈牙利', 'PT': '葡萄牙', 'GR': '希腊',
+    'RO': '罗马尼亚', 'BG': '保加利亚', 'HR': '克罗地亚', 'IS': '冰岛', 'BY': '白俄罗斯',
+    'AL': '阿尔巴尼亚', 'AM': '亚美尼亚', 'MD': '摩尔多瓦', 'RU': '俄罗斯', 'TR': '土耳其',
+    'EU': '欧元区', 'CY': '塞浦路斯', 'EE': '爱沙尼亚', 'LV': '拉脱维亚', 'LT': '立陶宛',
+    'LU': '卢森堡', 'MT': '马耳他', 'SK': '斯洛伐克', 'SI': '斯洛文尼亚', 'CN': '中国大陆',
+    'JP': '日本', 'KR': '韩国', 'AU': '澳大利亚', 'NZ': '新西兰', 'HK': '香港',
+    'SG': '新加坡', 'TW': '台湾', 'TH': '泰国', 'MY': '马来西亚', 'PH': '菲律宾',
+    'VN': '越南', 'ID': '印度尼西亚', 'IN': '印度', 'KZ': '哈萨克斯坦', 'KG': '吉尔吉斯斯坦',
+    'NP': '尼泊尔', 'PK': '巴基斯坦', 'TJ': '塔吉克斯坦', 'UZ': '乌兹别克斯坦', 'KH': '柬埔寨',
+    'AE': '阿联酋', 'SA': '沙特阿拉伯', 'IL': '以色列', 'EG': '埃及', 'ZA': '南非',
+    'NG': '尼日利亚', 'QA': '卡塔尔', 'BH': '巴林', 'GE': '格鲁吉亚', 'CI': '科特迪瓦',
+    'CM': '喀麦隆', 'GH': '加纳', 'KE': '肯尼亚', 'SN': '塞内加尔', 'TZ': '坦桑尼亚',
+    'UG': '乌干达', 'ZM': '赞比亚', 'ZW': '津巴布韦', 'BJ': '贝宁',
+}
+
 # --- Configuration ---
 load_dotenv() # Load environment variables from .env file
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -892,56 +915,39 @@ last_update_timestamp = "Never" # Initialize global timestamp
 
 @app.route('/api/prices', methods=['GET'])
 def get_prices():
-    """API endpoint to retrieve ALL available filtered and sorted prices."""
+    """ API endpoint to return all filtered/sorted prices with country names. """
     app_name = flask.request.args.get('app')
-    plan_name = flask.request.args.get('plan') # Optional plan filter
+    plan_name = flask.request.args.get('plan')
+    if not app_name: return jsonify({"error": "Missing 'app' parameter"}), 400
 
-    if not app_name:
-        return jsonify({"error": "Missing 'app' parameter"}), 400
-
-    # Fetch data from database using your existing function
     db_results, update_time = query_prices_from_db(app_name, plan_name if plan_name else None)
 
-    # Handle database query failure
-    if not db_results and update_time is None:
-         return jsonify({"error": "Failed to query database"}), 500
-
-    # Handle case where query succeeded but no data found
+    if update_time is None and not db_results: return jsonify({"error": "Failed to query database"}), 500
     if not db_results:
-        logging.info(f"No price data found in DB for app='{app_name}', plan='{plan_name}'")
-        return jsonify({
-            "app": app_name,
-            "plan_filter": plan_name,
-            "prices": [], # Return empty list
-            "last_updated": update_time or "N/A"
-        })
+        return jsonify({"app": app_name, "plan_filter": plan_name, "prices": [], "last_updated": update_time or last_update_timestamp})
 
-    # --- Sorting Logic (Still useful for display) ---
-    # Filter out entries where CNY conversion might have failed (price_cny is None)
-    valid_prices = [p for p in db_results if p.get("price_cny") is not None]
+    # --- Add Country Name to results ---
+    processed_results = []
+    for item in db_results:
+        region_code = item.get("region")
+        # Look up country name, default to region code if not found
+        item["country_name"] = REGION_CODE_TO_NAME.get(region_code, region_code) # Use the new map
+        processed_results.append(item)
+    # --- End Add Country Name ---
 
-    # Sort ALL valid prices by CNY price (ascending)
-    sorted_prices = sorted(valid_prices, key=lambda x: x["price_cny"])
-    # --- End Sorting Logic ---
-
-    # --- The "Top 10 + US/CN" filtering logic is REMOVED ---
-
-    # --- Prepare final list to return ---
-    # We now return the *entire* sorted list of valid prices
+    valid_prices = [p for p in processed_results if p.get("price_cny") is not None]
+    sorted_prices = sorted(valid_prices, key=lambda x: x.get("price_cny", float('inf')))
     final_list_to_return = sorted_prices
 
-    # Convert datetime objects in results to ISO strings for JSON compatibility
     for item in final_list_to_return:
          if isinstance(item.get('last_updated'), datetime.datetime):
-              item['last_updated'] = item['last_updated'].isoformat()
+              item['last_updated'] = item['last_updated'].isoformat() + "Z"
 
-    logging.info(f"API returning {len(final_list_to_return)} prices for app='{app_name}', plan='{plan_name}' (Full List)")
-
+    logging.info(f"API returning {len(final_list_to_return)} prices for {app_name}/{plan_name} (Full List)")
     return jsonify({
-        "app": app_name,
-        "plan_filter": plan_name,
-        "prices": final_list_to_return, # Return the FULL sorted list
-        "last_updated": update_time or "N/A"
+        "app": app_name, "plan_filter": plan_name,
+        "prices": final_list_to_return,
+        "last_updated": update_time or last_update_timestamp
     })
 
 # --- Route for HTML Frontend ---
