@@ -963,7 +963,7 @@ def scheduled_update_job():
 # Schedule job
 # Run less frequently initially to avoid hitting API limits/getting blocked
 # Update every 6 hours:
-scheduler.add_job(func=scheduled_update_job, trigger="interval", hours=6, misfire_grace_time=900) # Grace time 15min
+scheduler.add_job(func=scheduled_update_job, trigger="interval", hours=72, misfire_grace_time=900) # Grace time 15min
 # For testing, run more often (e.g., every 1 minute):
 # scheduler.add_job(func=scheduled_update_job, trigger="interval", minutes=1)
 
