@@ -49,13 +49,13 @@
 
 2.  **克隆仓库 (如果适用):**
     ```bash
-    git clone <your-repository-url>
-    cd price-comparator
+    git clone https://github.com/nie11kun/price_comparator.git
+    cd price_comparator
     ```
-    *如果没有仓库，请创建一个名为 `price-comparator` 的目录并将代码文件放入其中。*
+    *如果没有仓库，请创建一个名为 `price_comparator` 的目录并将代码文件放入其中。*
 
 3.  **创建并激活虚拟环境:**
-    * 导航到项目目录 (`price-comparator`)。
+    * 导航到项目目录 (`price_comparator`)。
     * **Windows:**
         ```bash
         python -m venv venv
@@ -121,7 +121,7 @@
         ```
 
 6.  **环境变量:**
-    * 在项目根目录 (`price-comparator`) 创建一个名为 `.env` 的文件。
+    * 在项目根目录 (`price_comparator`) 创建一个名为 `.env` 的文件。
     * 添加以下内容，**将占位符替换为你的实际值**:
         ```dotenv
         # .env - 保持此文件安全! 如果公开使用 Git，请添加到 .gitignore。
@@ -186,7 +186,7 @@
 ## 项目结构 (示例)
 
 ```
-price-comparator/
+price_comparator/
 ├── venv/                  # 虚拟环境目录
 ├── static/                # 静态文件 (CSS, JS)
 │   ├── style.css
