@@ -1,0 +1,9 @@
+# requirements.txt
+Flask>=2.0
+requests>=2.25
+beautifulsoup4>=4.9
+APScheduler>=3.7
+psycopg2-binary>=2.8 # For PostgreSQL
+SQLAlchemy>=1.4 # Not used in this psycopg2 example, but good for ORM
+python-dotenv>=0.19
+gunicorn # For deployment

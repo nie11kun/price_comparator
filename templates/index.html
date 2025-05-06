@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App 订阅价格比较</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    </head>
+<body>
+
+    <div class="container">
+        <h1>App 订阅价格比较</h1>
+        <p class="description">比较不同地区 iCloud+, ChatGPT, Claude, Google One 等服务的订阅价格。</p>
+
+        <div class="controls">
+            <label for="app-select">选择服务:</label>
+            <select id="app-select">
+                <option value="iCloud+">iCloud+</option>
+                <option value="ChatGPT">ChatGPT</option>
+                <option value="Claude">Claude</option>
+                <option value="Google One">Google One</option>
+                </select>
+
+            <label for="plan-select" class="plan-label">选择套餐/计划:</label>
+            <select id="plan-select">
+                <option value="">-- 显示所有 --</option>
+                </select>
+        </div>
+
+        <div id="status-messages">
+            <div id="loading" class="status-indicator">正在加载数据...</div>
+            <div id="error" class="status-indicator error">加载数据时出错。</div>
+            <div id="last-updated" class="status-indicator timestamp"></div>
+        </div>
+
+        <div class="table-container">
+            <table id="price-table">
+                <thead>
+                    <tr>
+                        <th>地区 (Region)</th>
+                        <th>套餐/计划 (Plan/Tier)</th>
+                        <th>本地价格 (Local Price)</th>
+                        <th>约合人民币 (CNY Estimate)</th>
+                        </tr>
+                </thead>
+                <tbody id="price-table-body">
+                    <tr>
+                        <td colspan="4" style="text-align: center;">请选择一个服务以加载价格信息。</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+         <p class="disclaimer">
+             注意：价格信息通过定期抓取公开数据获得，可能并非绝对实时。人民币价格根据参考汇率估算，仅供参考。部分服务可能在某些地区不可用。
+         </p>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    </body>
+</html>
