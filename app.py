@@ -14,21 +14,68 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 import time # For potential delays between requests
 import re
+import unicodedata # Add for potential normalization
+
+# --- Flask App Initialization ---
+app = Flask(__name__)
+
+# --- Logging Setup ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Global state for Exchange Rate API Circuit Breaker ---
 api_failure_counts = {} # Dictionary to store consecutive failures per currency pair (e.g., {'CAD_CNY': 1})
 api_circuit_breaker_open = False # Flag to indicate if the breaker is open
 API_FAILURE_THRESHOLD = 1 # Number of consecutive failures for a pair to open the breaker for the current run
 
+# --- API Endpoint ---
+last_update_timestamp = "Never" # Initialize global timestamp
+
 # --- Exchange Rate Conversion ---
 FALLBACK_RATES_TO_CNY = {
-    'USD': 7.25, 'EUR': 7.80, 'GBP': 9.10, 'JPY': 0.048, 'CAD': 5.35, 'AUD': 4.80, 'HKD': 0.93,
-    'KRW': 0.0053, 'SGD': 5.38, 'CHF': 8.00, 'INR': 0.087, 'BRL': 1.45, 'TRY': 0.22, 'RUB': 0.078,
-    'MXN': 0.43, 'NZD': 4.35, 'SEK': 0.67, 'NOK': 0.66, 'DKK': 1.05, 'PLN': 1.80, 'ZAR': 0.39,
-    'AED': 1.97, 'SAR': 1.93, 'THB': 0.198, 'IDR': 0.00045, 'MYR': 1.53, 'PHP': 0.126,'VND': 0.000285,
-    'CZK': 0.031, 'HUF': 0.020, 'ILS': 1.95, 'CLP': 0.0077, 'COP': 0.00185,'PEN': 1.95, 'ARS': 0.008,
-    'TWD': 0.225, 'PKR': 0.026, 'EGP': 0.15, 'QAR': 1.99, 'KZT': 0.016, 'RON': 1.57, 'BGN': 4.00,
-    'TZS': 0.0028,
+    'USD': 7.21515,  # 美元
+    'EUR': 8.1863,   # 欧元
+    'GBP': 9.6338,   # 英镑
+    'JPY': 0.04994,  # 日元
+    'CAD': 5.2331,   # 加拿大元
+    'AUD': 4.6821,   # 澳大利亚元
+    'HKD': 0.9298,   # 港元
+    'KRW': 0.005237, # 韩元
+    'SGD': 5.5976,   # 新加坡元
+    'CHF': 8.7670,   # 瑞士法郎
+    'INR': 0.08548,  # 印度卢比
+    'BRL': 1.2634,   # 巴西雷亚尔
+    'TRY': 0.2236,   # 土耳其里拉
+    'RUB': 0.08903,  # 俄罗斯卢布
+    'MXN': 0.3669,   # 墨西哥比索
+    'NZD': 4.33070,  # 新西兰元
+    'SEK': 0.6733,   # 瑞典克朗
+    'NOK': 0.6656,   # 挪威克朗
+    'DKK': 1.0983,   # 丹麦克朗
+    'PLN': 1.8098,   # 波兰兹罗提
+    'ZAR': 0.3962,   # 南非兰特
+    'AED': 1.9661,   # 阿联酋迪拉姆
+    'SAR': 1.9244,   # 沙特里亚尔
+    'THB': 0.1977,   # 泰铢
+    'IDR': 0.0004512,# 印度尼西亚盾
+    'MYR': 1.5308,   # 马来西亚林吉特
+    'PHP': 0.1261,   # 菲律宾比索
+    'VND': 0.0002801,# 越南盾
+    'CZK': 0.3125,   # 捷克克朗
+    'HUF': 0.02005,  # 匈牙利福林
+    'ILS': 1.9517,   # 以色列新谢克尔
+    'CLP': 0.007718, # 智利比索
+    'COP': 0.001853, # 哥伦比亚比索
+    'PEN': 1.9508,   # 秘鲁索尔
+    'ARS': 0.006034, # 阿根廷比索
+    'TWD': 0.2233,   # 新台币
+    'PKR': 0.02593,  # 巴基斯坦卢比
+    'EGP': 0.1520,   # 埃及镑
+    'QAR': 1.9851,   # 卡塔尔里亚尔
+    'KZT': 0.01636,  # 哈萨克斯坦坚戈
+    'RON': 1.5726,   # 罗马尼亚列伊
+    'BGN': 4.0001,   # 保加利亚列弗
+    'TZS': 0.002691, # 坦桑尼亚先令
+    'NGN': 0.005017, # 尼日利亚奈拉
     # Add others as needed
 }
 
@@ -58,13 +105,12 @@ REGION_CODE_TO_NAME = {
 # --- Configuration ---
 load_dotenv() # Load environment variables from .env file
 DATABASE_URL = os.getenv("DATABASE_URL")
-EXCHANGE_RATE_API_KEY = os.getenv("EXCHANGE_RATE_API_KEY")
 TARGET_REGIONS = [
     # North America
     'us', 'ca',
 
     # Europe
-    'gb', 'de', 'fr', 'it', 'es', # Major EU
+    # 'gb', 'de', 'fr', 'it', 'es', # Major EU
     # 'be', 'ie', 'at', 'ch', # Benelux, Ireland, Austria, Switzerland
     # 'se', 'no', 'dk', 'fi',       # Nordics
     # 'pl', 'cz', 'hu', 'pt', 'gr', # Central/Southern/Eastern Europe
@@ -99,12 +145,6 @@ APPS_TO_SCRAPE = {
     "Google One": {"id": "1451784328", "source": "app_store"},
 }
 
-# --- Flask App Initialization ---
-app = Flask(__name__)
-
-# --- Logging Setup ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 # --- Database Connection ---
 def get_db_connection():
     """Establishes a connection to the PostgreSQL database."""
@@ -115,94 +155,107 @@ def get_db_connection():
         logging.error(f"Database connection error: {e}")
         return None
 
-def get_exchange_rate(from_currency, to_currency="CNY", region_code=None): # Pass region_code for context
+def get_exchange_rate(from_currency, to_currency="CNY", region_code=None):
     """
-    Fetches the exchange rate from an external API, with hardcoded fallback
-    and a simple circuit breaker (opens after threshold consecutive failures for a pair).
+    通过外部 API 获取汇率，带有硬编码的回退机制
+    和一个简单的断路器（在货币对连续失败达到阈值后打开）。
+    已修改为尝试使用 FreeForexAPI。
     """
-    global api_failure_counts, api_circuit_breaker_open # Declare modification of globals
+    global api_failure_counts, api_circuit_breaker_open
 
     from_currency_upper = from_currency.upper()
     to_currency_upper = to_currency.upper()
-    currency_pair = f"{from_currency_upper}_{to_currency_upper}"
+    currency_pair = f"{from_currency_upper}_{to_currency_upper}" # 用于日志和内部跟踪
+    
+    # FreeForexAPI 使用的货币对格式，例如 "USDCNY"
+    api_pair_format = f"{from_currency_upper}{to_currency_upper}"
+
 
     if from_currency_upper == to_currency_upper:
         return 1.0
 
-    # --- 1. Circuit Breaker Check ---
+    # --- 1. 断路器检查 ---
     if api_circuit_breaker_open:
-        logging.warning(f"[CB OPEN] Circuit Breaker is open. Skipping API call for {currency_pair}.")
-        # Go directly to fallback
-        if from_currency_upper in FALLBACK_RATES_TO_CNY:
+        logging.warning(f"[CB OPEN] 断路器已打开。跳过 {currency_pair} 的 API 调用。")
+        # (回退逻辑与之前相同，注意其对非CNY目标货币的适用性)
+        if to_currency_upper == "CNY" and from_currency_upper in FALLBACK_RATES_TO_CNY:
             fallback_rate = FALLBACK_RATES_TO_CNY[from_currency_upper]
-            logging.warning(f"[CB OPEN] Using FALLBACK rate {fallback_rate} for {currency_pair}")
+            logging.warning(f"[CB OPEN] 正在为 {currency_pair} 使用回退汇率 {fallback_rate}")
             return fallback_rate
+        elif from_currency_upper in FALLBACK_RATES_TO_CNY and to_currency_upper != "CNY":
+             logging.warning(f"[CB OPEN] 断路器开启，且目标货币非CNY ({to_currency_upper})。FALLBACK_RATES_TO_CNY 可能不适用。没有为 {currency_pair} 提供直接回退。")
+             return None
         else:
-            logging.error(f"[CB OPEN] No API rate and no fallback rate found for currency: {from_currency_upper}")
+            logging.error(f"[CB OPEN] 找不到 API 汇率，也没有为货币 {from_currency_upper} (目标 {to_currency_upper}) 找到回退汇率。")
             return None
 
-    # --- 2. Attempt API Call ---
+    # --- 2. 尝试 API 调用 (使用 FreeForexAPI) ---
     api_rate = None
-    api_call_succeeded = False # Flag to track success/failure
+    api_call_succeeded = False
 
-    if EXCHANGE_RATE_API_KEY:
-        url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_RATE_API_KEY}/pair/{from_currency_upper}/{to_currency_upper}"
-        try:
-            response = requests.get(url, timeout=10) # Adjust timeout as needed
-            response.raise_for_status()
-            data = response.json()
-            if data.get("result") == "success" and "conversion_rate" in data:
-                api_rate = float(data["conversion_rate"])
-                api_call_succeeded = True
-                logging.info(f"API: Got rate {api_rate} for {currency_pair}")
-            else:
-                error_type = data.get("error-type", "API Error")
-                logging.error(f"Exchange rate API error for {currency_pair}: {error_type}")
-        except requests.exceptions.Timeout:
-             logging.error(f"Timeout connecting to exchange rate API for {currency_pair}")
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Error fetching exchange rate API for {currency_pair}: {e}")
-        except Exception as e: # Catch other potential errors like JSONDecodeError
-            logging.error(f"Unexpected error during API exchange rate fetching for {currency_pair}: {e}")
-    else:
-        logging.warning("Exchange Rate API Key is missing! Cannot fetch live rates.")
-        # Don't count as failure if key is missing, just proceed to fallback
+    # 文档: https://www.freeforexapi.com/Home/Api
+    # 注意: 请自行查阅其使用条款以确认是否有隐藏的请求限制。
+    url = f"https://www.freeforexapi.com/api/live?pairs={api_pair_format}"
+    
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status() # 检查 HTTP 错误
+        data = response.json()
+        # 预期成功响应示例: {"rates":{"USDCNY":{"rate":7.235681,"timestamp":1714998846}},"code":200}
+        if data.get("code") == 200 and "rates" in data and \
+           api_pair_format in data["rates"] and "rate" in data["rates"][api_pair_format]:
+            api_rate = float(data["rates"][api_pair_format]["rate"])
+            api_call_succeeded = True
+            logging.info(f"FreeForexAPI: 获取到 {currency_pair} 的汇率 {api_rate}")
+        else:
+            error_detail = data.get("message", f"响应代码: {data.get('code', 'N/A')}, 或汇率数据未找到")
+            logging.error(f"FreeForexAPI 错误 ({currency_pair}): {error_detail}. 数据: {data}")
+            if data.get("code") != 200 : # 如果code不是200，也认为是API层面的失败
+                 logging.warning(f"FreeForexAPI 返回非200状态码: {data.get('code')} for {currency_pair}")
 
-    # --- 3. Update Failure Count and Circuit Breaker State ---
+
+    except requests.exceptions.Timeout:
+        logging.error(f"连接 FreeForexAPI 超时 ({currency_pair})")
+    except requests.exceptions.HTTPError as e:
+        error_text = e.response.text if e.response is not None else "无响应文本"
+        logging.error(f"FreeForexAPI HTTP 错误 ({currency_pair}): {e}. 响应: {error_text}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"从 FreeForexAPI 获取汇率时出错 ({currency_pair}): {e}")
+    except (ValueError, KeyError) as e: # JSON 解析错误, float转换错误, 或字典键错误
+        logging.error(f"解析来自 FreeForexAPI 的响应或汇率时出错 ({currency_pair}): {e}")
+    except Exception as e:
+        logging.error(f"FreeForexAPI 获取汇率时发生意外错误 ({currency_pair}): {e}")
+
+    # --- 3. 更新失败计数和断路器状态 (与之前逻辑相同) ---
     if api_call_succeeded:
-        # Reset failure count for this specific pair on success
-        if api_failure_counts.get(currency_pair, 0) > 0: # Log only if it was failing before
-             logging.info(f"API call successful for {currency_pair}. Resetting failure count.")
+        if api_failure_counts.get(currency_pair, 0) > 0:
+            logging.info(f"FreeForexAPI 调用成功 ({currency_pair})。重置失败计数。")
         api_failure_counts[currency_pair] = 0
-    elif EXCHANGE_RATE_API_KEY: # Only count failures if we actually tried the API
+    else:
         fail_count = api_failure_counts.get(currency_pair, 0) + 1
         api_failure_counts[currency_pair] = fail_count
-        logging.warning(f"API call failed for {currency_pair}. Consecutive failure count: {fail_count} (Region context: {region_code})")
-        # Check if threshold reached to open the breaker
+        logging.warning(f"FreeForexAPI 调用失败 ({currency_pair})。连续失败次数: {fail_count} (区域上下文: {region_code})")
         if fail_count >= API_FAILURE_THRESHOLD and not api_circuit_breaker_open:
-             logging.error(f"API Failure threshold ({API_FAILURE_THRESHOLD}) reached for {currency_pair}. Opening circuit breaker for the rest of this update run!")
-             api_circuit_breaker_open = True # OPEN THE BREAKER (affects subsequent calls in this run)
+            logging.error(f"FreeForexAPI 失败阈值 ({API_FAILURE_THRESHOLD}) 已达到 ({currency_pair})。在本次更新运行的剩余时间内打开断路器！")
+            api_circuit_breaker_open = True
 
-    # --- 4. Return Result or Fallback ---
+    # --- 4. 返回结果或回退 (与之前逻辑相同) ---
     if api_rate is not None:
         return api_rate
     else:
-        # Fallback needed (API failed, key missing, or breaker open)
-        logging.warning(f"API rate unavailable for {currency_pair}. Attempting fallback rate.")
-        if from_currency_upper in FALLBACK_RATES_TO_CNY:
+        logging.warning(f"{currency_pair} 的 API 汇率不可用。尝试使用回退汇率。")
+        if to_currency_upper == "CNY" and from_currency_upper in FALLBACK_RATES_TO_CNY:
             fallback_rate = FALLBACK_RATES_TO_CNY[from_currency_upper]
-            logging.warning(f"Using FALLBACK rate {fallback_rate} for {currency_pair}")
+            logging.warning(f"正在为 {currency_pair} 使用回退汇率 {fallback_rate}")
             return fallback_rate
-        else:
-            # Log error if even fallback isn't available
-            logging.error(f"No API rate and no fallback rate found for currency: {from_currency_upper}")
+        elif from_currency_upper in FALLBACK_RATES_TO_CNY and to_currency_upper != "CNY":
+            logging.error(f"没有为 {currency_pair} 找到合适的 API 汇率。回退汇率 FALLBACK_RATES_TO_CNY 是针对 CNY 的，可能不适用于目标货币 {to_currency_upper}。")
             return None
-    
+        else:
+            logging.error(f"找不到 API 汇率，也没有为货币 {from_currency_upper} (目标 {to_currency_upper}) 找到回退汇率。")
+            return None
+      
 # --- Scraping Functions ---
-
-# Utility to clean price strings (basic)
-import re # Ensure re is imported
-import unicodedata # Add for potential normalization
 
 def clean_price(price_text, region_code=None): # Add region_code
     """Attempts to extract a float value and currency code from a price string,
@@ -509,9 +562,6 @@ def scrape_icloud_prices():
         logging.error(f"Error parsing iCloud+ page {url}: {e}", exc_info=True)
         return None
 
-# --- Helper function map_country_to_code needs robust footnote removal ---
-# 确保文件顶部有 import re
-
 def map_country_to_code(country_name_raw):
     """
     Cleans the raw country name string extracted from HTML (removing footnotes, currency codes)
@@ -700,23 +750,6 @@ def scrape_app_store_price(app_name, region_code, app_id):
     except Exception as e:
         logging.error(f"Error parsing App Store page for {app_name} in {region_code}: {e}", exc_info=True)
         return None
-
-@app.route('/admin/trigger-update', methods=['POST', 'GET']) # Allow GET for easy browser testing, POST is better practice
-def trigger_update():
-    logging.info("Manual update triggered via /admin/trigger-update")
-    try:
-        # 在后台线程中运行可能更好，避免长时间阻塞请求
-        # import threading
-        # thread = threading.Thread(target=update_prices_in_db)
-        # thread.start()
-        # return jsonify({"message": "Update process started in background. Check logs."}), 202
-
-        # 为了简单，现在直接运行 (可能会阻塞几分钟)
-        update_prices_in_db()
-        return jsonify({"message": "Update process completed. Check logs and refresh data."}), 200
-    except Exception as e:
-         logging.error(f"Error during manual trigger: {e}", exc_info=True)
-         return jsonify({"error": "Failed to trigger update. Check logs."}), 500
 
 # --- Data Update Logic ---
 def update_prices_in_db():
@@ -909,9 +942,22 @@ def query_prices_from_db(app_name_filter, plan_name_filter=None):
         if conn: conn.close()
         return [], None # Return empty list on query failure
 
+@app.route('/admin/trigger-update', methods=['POST', 'GET']) # Allow GET for easy browser testing, POST is better practice
+def trigger_update():
+    logging.info("Manual update triggered via /admin/trigger-update")
+    try:
+        # 在后台线程中运行可能更好，避免长时间阻塞请求
+        # import threading
+        # thread = threading.Thread(target=update_prices_in_db)
+        # thread.start()
+        # return jsonify({"message": "Update process started in background. Check logs."}), 202
 
-# --- API Endpoint ---
-last_update_timestamp = "Never" # Initialize global timestamp
+        # 为了简单，现在直接运行 (可能会阻塞几分钟)
+        update_prices_in_db()
+        return jsonify({"message": "Update process completed. Check logs and refresh data."}), 200
+    except Exception as e:
+         logging.error(f"Error during manual trigger: {e}", exc_info=True)
+         return jsonify({"error": "Failed to trigger update. Check logs."}), 500
 
 @app.route('/api/prices', methods=['GET'])
 def get_prices():
@@ -975,11 +1021,6 @@ scheduler.add_job(func=scheduled_update_job, trigger="interval", hours=72, misfi
 
 # --- Main Execution Block ---
 if __name__ == '__main__':
-    # Perform an initial update on startup (optional, can take time)
-    # Consider running this manually or via a separate script first
-    # with app.app_context():
-    #      update_prices_in_db()
-
     # Start the scheduler only if not in debug mode with reloader, or handle appropriately
     if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
          scheduler.start()
@@ -988,9 +1029,4 @@ if __name__ == '__main__':
          atexit.register(lambda: scheduler.shutdown())
     else:
          logging.info("APScheduler not started because Flask is in debug mode with reloader.")
-
-
-    # Run Flask dev server (Use Gunicorn in production)
-    # port = int(os.environ.get('PORT', 5000)) # Good practice for deployment flexibility
-    # app.run(host='0.0.0.0', port=port, debug=False) # Use debug=False for production/scheduler test
     app.run(host='127.0.0.1', port=5830, debug=False)
