@@ -110,7 +110,7 @@ TARGET_REGIONS = [
     'us', 'ca',
 
     # Europe
-    # 'gb', 'de', 'fr', 'it', 'es', # Major EU
+    'gb', 'de', 'fr', 'it', 'es', # Major EU
     # 'be', 'ie', 'at', 'ch', # Benelux, Ireland, Austria, Switzerland
     # 'se', 'no', 'dk', 'fi',       # Nordics
     # 'pl', 'cz', 'hu', 'pt', 'gr', # Central/Southern/Eastern Europe
@@ -169,7 +169,6 @@ def get_exchange_rate(from_currency, to_currency="CNY", region_code=None):
     
     # FreeForexAPI 使用的货币对格式，例如 "USDCNY"
     api_pair_format = f"{from_currency_upper}{to_currency_upper}"
-
 
     if from_currency_upper == to_currency_upper:
         return 1.0
